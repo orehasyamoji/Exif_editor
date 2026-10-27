@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#293d35" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta
+      name="description"
+      content="フィルム写真の機材と露出を、JPEGを再圧縮せずに記録。写真は端末の外へ送信されません。"
+    />
+    <link rel="icon" href="./icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <title>Film EXIF — フィルム写真のEXIF編集</title>
+  </head>
+  <body>
+    <header class="masthead">
+      <div class="brand">
+        <span class="mark" aria-hidden="true">▣</span>
+        <div>
+          <h1>Film EXIF</h1>
+          <p>フィルムの記録を、写真へ。</p>
+        </div>
+      </div>
+      <span class="privacy">端末内で処理 · アップロードなし</span>
+    </header>
+    <main>
+      <div class="intro">
+        <p class="eyebrow">FILM ROLL / METADATA EDITOR</p>
+        <h2>ひとロールの記憶を整える。</h2>
+        <p>
+          複写用カメラの情報を、フィルム撮影時の機材と露出に。<br />JPEGの画像データは再圧縮しません。
+        </p>
+      </div>
+      <div id="offline-status" class="status" role="status">
+        オフライン利用の準備状況を確認しています…
+      </div>
+      <p id="message" class="message" role="alert" hidden></p>
+      <form id="editor">
+        <section class="panel">
+          <div class="section-title">
+            <span>01</span>
+            <h2>JPEGを読み込む</h2>
+            <span id="file-count" class="badge">0 枚</span>
+          </div>
+          <div class="file-picker">
+            <label for="files" class="button primary">JPEGファイルを選択</label
+            ><input
+              id="files"
+              type="file"
+              accept="image/jpeg,.jpg,.jpeg"
+              multiple
+            />
+            <p>1ロール 24〜36枚をまとめて選べます</p>
+            <small>選び直すと一覧を入れ替えます。合計256 MiBまで。</small>
+          </div>
+          <div class="selection-summary">
+            <span id="file-size">未選択</span
+            ><button id="clear-files" type="button" class="text-button">
+              選択を解除
+            </button>
+          </div>
+        </section>
+        <section class="panel">
+          <div class="section-title">
+            <span>02</span>
+            <h2>カメラとレンズ</h2>
+          </div>
+          <div class="preset-row">
+            <label
+              >保存済みプリセット<select id="preset">
+                <option value="">新しい機材を入力</option>
+              </select></label
+            ><button
+              type="button"
+              id="delete-preset"
+              class="secondary"
+              disabled
+            >
+              削除
+            </button>
+          </div>
+          <div class="fields three">
+            <label
+              >カメラメーカー<input
+                id="make"
+                placeholder="例：Nikon"
+                maxlength="250" /></label
+            ><label
+              >カメラ機種名<input
+                id="model"
+                placeholder="例：FM2"
+                maxlength="250" /></label
+            ><label
+              >レンズ名<input
+                id="lens"
+                placeholder="例：Nikkor 50mm f/1.4"
+                maxlength="250"
+            /></label>
+          </div>
+          <p class="hint">
+            空欄の機材タグは削除します。ISOと露出はプリセットに含まれません。
+          </p>
+          <div class="preset-row">
+            <label
+              >プリセット名<input
+                id="preset-name"
+                placeholder="例：FM2 / 50mm"
+                maxlength="100" /></label
+            ><button type="button" id="save-preset" class="secondary">
+              新規保存</button
+            ><button
+              type="button"
+              id="update-preset"
+              class="secondary"
+              disabled
+            >
+              上書き保存
+            </button>
+          </div>
+          <p id="preset-status" class="hint" role="status">
+            プリセットはこのブラウザに保存されます。
+          </p>
+        </section>
+        <section class="panel">
+          <div class="section-title">
+            <span>03</span>
+            <h2>フィルムのISO</h2>
+            <span class="badge">ロール共通</span>
+          </div>
+          <div class="iso-row">
+            <label
+              >ISO感度<input
+                id="iso"
+                type="text"
+                inputmode="numeric"
+                value="400"
+                required
+                pattern="[0-9]+"
+                aria-describedby="iso-hint"
+            /></label>
+            <div class="quick-iso" aria-label="よく使うISO">
+              <button type="button" data-iso="100">100</button
+              ><button type="button" data-iso="200">200</button
+              ><button type="button" data-iso="400">400</button
+              ><button type="button" data-iso="800">800</button>
+            </div>
+          </div>
+          <p id="iso-hint" class="hint">
+            任意の正の整数を指定できます（EXIFの上限：4294967295）。
+          </p>
+        </section>
+        <section class="panel">
+          <div class="section-title">
+            <span>04</span>
+            <h2>絞りとシャッタースピード</h2>
+          </div>
+          <fieldset class="modes">
+            <legend class="sr-only">露出の設定方法</legend>
+            <label
+              ><input type="radio" name="mode" value="unset" checked /><span
+                >未設定<small>複写時の露出を削除</small></span
+              ></label
+            ><label
+              ><input type="radio" name="mode" value="batch" /><span
+                >一括入力<small>すべての写真に同じ値</small></span
+              ></label
+            ><label
+              ><input type="radio" name="mode" value="individual" /><span
+                >個別入力<small>写真ごとに設定</small></span
+              ></label
+            >
+          </fieldset>
+          <p id="mode-hint" class="hint">
+            F値とシャッタースピードの関連タグを削除します。ダミー値は書き込みません。
+          </p>
+          <div id="batch-fields" class="fields two" hidden></div>
+        </section>
+        <section class="panel">
+          <div class="section-title">
+            <span>05</span>
+            <h2>写真一覧</h2>
+            <span class="badge">ファイル名順</span>
+          </div>
+          <p class="hint">
+            選択したJPEGを一覧表示します。露出欄の空欄は「未設定」です。
+          </p>
+          <div id="photo-list">
+            <p class="empty">まだ写真が選択されていません。</p>
+          </div>
+        </section>
+        <section class="panel export-panel">
+          <div class="section-title">
+            <span>06</span>
+            <h2>一括編集と保存</h2>
+          </div>
+          <p>元のファイルは変更しません。編集済みJPEGをZIPにまとめます。</p>
+          <p class="hint">
+            MakerNote・XMP・IPTC・サムネイル内の独自情報は書き換えません。該当時はファイルごとに警告します。元の値がEXIF内の未参照領域に残ることもあります。個人情報を除去するツールではありません。
+          </p>
+          <div class="export-actions">
+            <button id="process" type="submit" class="primary" disabled>
+              EXIFを編集してZIPを作成</button
+            ><button id="cancel" type="button" class="secondary" hidden>
+              中止</button
+            ><a id="download" class="button primary" hidden>ZIPを保存</a>
+          </div>
+          <progress
+            id="progress"
+            value="0"
+            max="1"
+            hidden
+            aria-label="処理の進捗"
+          ></progress>
+          <p id="result" role="status" aria-live="polite">
+            写真を選択すると処理できます。
+          </p>
+          <div id="report"></div>
+        </section>
+      </form>
+      <footer>
+        Film EXIF · 写真はあなたの端末の中に。<br /><small
+          >iPad：Safariの共有メニュー
+          →「ホーム画面に追加」。初回のオフライン準備完了後に利用できます。</small
+        >
+      </footer>
+    </main>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
