@@ -118,12 +118,14 @@ test("preset CRUD persists through reload, fully offline reload/edit/download", 
   await page.locator("#make").fill("Nikon");
   await page.locator("#model").fill("FM2");
   await page.locator("#lens").fill("50mm");
+  await page.locator("#preset-editor summary").click();
   await page.locator("#preset-name").fill("My FM2");
   await page.locator("#save-preset").click();
   await page.reload();
   await page.locator("#preset").selectOption({ label: "My FM2" });
   await expect(page.locator("#model")).toHaveValue("FM2");
   await page.locator("#lens").fill("35mm");
+  await page.locator("#preset-editor summary").click();
   await page.locator("#update-preset").click();
   await context.setOffline(true);
   await page.reload();
@@ -172,8 +174,98 @@ test("storage quota errors remain visible and never claim preset saved", async (
     };
   });
   await page.goto("/");
+  await page.locator("#preset-editor summary").click();
   await page.locator("#preset-name").fill("FM2");
   await page.locator("#save-preset").click();
   await expect(page.locator("#message")).toContainText("保存できません");
   await expect(page.locator("#preset option")).toHaveCount(1);
+});
+
+test("help is available on demand, returns focus, and preserves editing inputs", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.locator("#make").fill("Nikon");
+  await expect(page.getByRole("dialog")).not.toBeVisible();
+  await page.getByRole("button", { name: "ヘルプ", exact: true }).click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await expect(page.getByRole("dialog")).toContainText("MakerNote");
+  await page.getByRole("button", { name: "ヘルプを閉じる" }).click();
+  await expect(page.getByRole("dialog")).not.toBeVisible();
+  await expect(page.locator("#open-help")).toBeFocused();
+  await expect(page.locator("#make")).toHaveValue("Nikon");
+  await page.locator("#open-help").click();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).not.toBeVisible();
+});
+
+test("tablet workspace keeps export in view, touch controls fit, and clearing restores empty state", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page
+    .locator("#files")
+    .setInputFiles(
+      Array.from({ length: 36 }, (_, i) => photo(`frame-${i}.jpg`)),
+    );
+  for (const viewport of [
+    { width: 810, height: 1080 },
+    { width: 1080, height: 810 },
+  ]) {
+    await page.setViewportSize(viewport);
+    const layout = await page.evaluate(() => {
+      const box = (id) => document.getElementById(id).getBoundingClientRect();
+      const settings = document
+        .querySelector(".settings")
+        .getBoundingClientRect();
+      const list = document.querySelector(".workspace").getBoundingClientRect();
+      const process = box("process");
+      return {
+        sideBySide: settings.right <= list.left,
+        exportVisible: process.top >= 0 && process.bottom <= innerHeight,
+        fits: document.documentElement.scrollWidth <= innerWidth,
+        touch: [
+          ...document.querySelectorAll(
+            "#process,#open-help,.modes label,[data-iso]",
+          ),
+        ].every((e) => e.getBoundingClientRect().height >= 44),
+      };
+    });
+    expect(layout).toEqual({
+      sideBySide: true,
+      exportVisible: true,
+      fits: true,
+      touch: true,
+    });
+  }
+  await page.locator("#clear-files").click();
+  await expect(page.locator("#file-count")).toHaveText("0 枚");
+  await expect(page.locator("#photo-list .empty")).toBeVisible();
+  await expect(page.locator("#process")).toBeDisabled();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.locator("#open-help").click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  await page.locator("#close-help").click();
+});
+
+test("offline setup errors remain available in touch-accessible help", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    navigator.serviceWorker.register = async () => {
+      throw new Error("CACHE_TEST_ERROR");
+    };
+  });
+  await page.goto("/");
+  await expect(page.locator("#offline-status")).toHaveText(
+    "オフライン準備失敗",
+  );
+  await page.locator("#open-help").click();
+  await expect(page.getByRole("dialog")).toContainText("CACHE_TEST_ERROR");
+  await expect(page.getByRole("dialog")).toContainText("接続中は利用できます");
 });

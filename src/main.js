@@ -29,13 +29,14 @@ function invalidate() {
   $("report").replaceChildren();
   $("progress").hidden = true;
   $("result").textContent = photos.length
-    ? "設定を確認し、ZIPを作成してください。"
-    : "写真を選択すると処理できます。";
+    ? `${photos.length} 枚 · 書き出し待ち`
+    : "写真が未選択です";
 }
 const mode = () => document.querySelector("input[name=mode]:checked").value;
 function exposureControl(label, type, value, onChange) {
-  const wrap = el("label", label, "exposure-control"),
+  const wrap = el("label", undefined, "exposure-control"),
     select = el("select");
+  wrap.append(el("span", type === "f" ? "F値" : "シャッター"));
   select.setAttribute("aria-label", label + "の候補");
   const options =
     type === "f"
@@ -123,11 +124,12 @@ $("batch-fields").append(
   exposureControl("F値", "f", "", (v) => (batch.f = v)),
   exposureControl("シャッタースピード", "time", "", (v) => (batch.time = v)),
 );
+const emptyState = $("photo-list").firstElementChild.cloneNode(true);
 function renderPhotos() {
   const list = $("photo-list");
   list.replaceChildren();
   if (!photos.length) {
-    list.append(el("p", "まだ写真が選択されていません。", "empty"));
+    list.append(emptyState.cloneNode(true));
     return;
   }
   photos.forEach((p, i) => {
@@ -192,8 +194,10 @@ for (const radio of document.querySelectorAll("input[name=mode]"))
     $("batch-fields").hidden = mode() !== "batch";
     $("mode-hint").textContent =
       mode() === "unset"
-        ? "F値とシャッタースピードの関連タグを削除します。ダミー値は書き込みません。"
-        : "空欄・未設定の項目はタグを削除します。F値とシャッターは独立して設定できます。";
+        ? "F値・シャッターを削除"
+        : mode() === "batch"
+          ? "全写真に適用 · 未設定の項目は削除"
+          : "写真一覧で設定 · 未設定の項目は削除";
     renderPhotos();
     invalidate();
   });
@@ -205,7 +209,7 @@ for (const b of document.querySelectorAll("[data-iso]"))
 for (const id of ["make", "model", "lens", "iso"])
   $(id).addEventListener("input", invalidate);
 function renderPresets(selected = "") {
-  $("preset").replaceChildren(new Option("新しい機材を入力", ""));
+  $("preset").replaceChildren(new Option("プリセットを選択", ""));
   presets.forEach((p) => $("preset").append(new Option(p.name, p.id)));
   $("preset").value = selected;
   $("delete-preset").disabled = $("update-preset").disabled = !selected;
@@ -390,7 +394,7 @@ $("editor").addEventListener("submit", async (event) => {
     }
     $("progress").value = $("progress").max;
     $("result").textContent =
-      `完了：成功 ${success} 枚・失敗 ${failed} 枚・警告 ${warned} 枚。${success ? "「ZIPを保存」で成功した写真を保存できます。" : "ファイルごとのエラーを確認してください。"}`;
+      `成功 ${success} 枚・失敗 ${failed} 枚・警告 ${warned} 枚`;
   } catch (e) {
     $("result").textContent =
       e.name === "AbortError"
@@ -404,14 +408,16 @@ $("editor").addEventListener("submit", async (event) => {
 async function offlineSetup() {
   const status = $("offline-status");
   if (!("serviceWorker" in navigator)) {
-    status.textContent =
+    status.textContent = "オフライン利用不可";
+    $("offline-detail").textContent =
       "この環境ではオフライン保存を利用できません。HTTPSまたはlocalhostで開いてください。";
     status.classList.add("warn");
     return;
   }
   if (import.meta.env.DEV) {
-    status.textContent =
-      "開発モード · オフライン検証は npm run build → npm run preview で行ってください。";
+    status.textContent = "開発モード";
+    $("offline-detail").textContent =
+      "開発モードではオフライン保存を行いません。本番ビルドで確認してください。";
     return;
   }
   try {
@@ -429,19 +435,22 @@ async function offlineSetup() {
     if (existing?.active) registration.update().catch(() => {});
     await navigator.serviceWorker.ready;
     const check = () => {
+      status.classList.add("ready");
+      $("offline-detail").textContent = registration.waiting
+        ? "新しい版があります。処理完了後、アプリをすべて閉じて開き直すと更新されます。"
+        : "オフライン準備完了。次回から接続なしで利用できます。";
       if (registration.waiting) {
-        status.textContent =
-          "新しい版があります。処理完了後、アプリをすべて閉じて開き直すと更新されます。";
-      } else
-        status.textContent =
-          "オフライン準備完了 · 次回から接続なしで利用できます。Safariによるサイトデータ削除後は再接続が必要です。";
+        status.textContent = "更新あり · 再起動で適用";
+      } else status.textContent = "オフライン準備完了";
     };
     check();
     registration.addEventListener("updatefound", () =>
       registration.installing?.addEventListener("statechange", check),
     );
   } catch (e) {
-    status.textContent = `オフライン保存に失敗しました。接続中は利用できます：${e.message}`;
+    status.textContent = "オフライン準備失敗";
+    $("offline-detail").textContent =
+      `オフライン保存に失敗しました。接続中は利用できます：${e.message}`;
     status.classList.add("warn");
   }
 }
@@ -452,3 +461,8 @@ window.addEventListener("beforeunload", (event) => {
     event.returnValue = "";
   }
 });
+
+// Supplementary guidance stays out of the editing workspace. Native dialog
+// provides focus trapping, Escape dismissal, and focus return on iPad Safari.
+$("open-help").addEventListener("click", () => $("help").showModal());
+$("close-help").addEventListener("click", () => $("help").close());
