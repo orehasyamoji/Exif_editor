@@ -6,7 +6,7 @@
       name="viewport"
       content="width=device-width, initial-scale=1, viewport-fit=cover"
     />
-    <meta name="theme-color" content="#293d35" />
+    <meta name="theme-color" content="#171819" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta
@@ -97,7 +97,7 @@
       <form id="editor" class="editor-layout">
         <section class="library-toolbar" aria-label="写真の選択">
           <div class="roll-summary">
-            <h2>写真</h2>
+            <h2>現在のロール</h2>
             <span id="file-count">0 枚</span><span id="file-size">未選択</span>
           </div>
           <div class="library-actions">
@@ -117,9 +117,33 @@
             />
           </div>
         </section>
+        <section class="workspace" aria-label="写真一覧">
+          <div class="list-heading">
+            <h2>フレーム</h2>
+            <span>JPEG · ファイル名順</span>
+          </div>
+          <div id="photo-list">
+            <div class="empty">
+              <svg class="empty-icon icon" aria-hidden="true">
+                <use href="#i-photo" />
+              </svg>
+              <span class="empty-eyebrow">YOUR NEXT ROLL</span>
+              <h3>ひとロールを、ここに。</h3>
+              <p>写真を選んで、フィルムの記録を整える。</p>
+              <label for="files" class="button secondary"
+                ><svg class="icon" aria-hidden="true">
+                  <use href="#i-plus" /></svg
+                >写真を選ぶ</label
+              >
+            </div>
+          </div>
+        </section>
         <aside class="settings" aria-label="EXIFの設定">
           <section class="settings-section">
-            <h2>カメラとレンズ</h2>
+            <div class="inspector-heading">
+              <h2>ロール設定</h2>
+              <span>全フレーム</span>
+            </div>
             <div class="preset-picker">
               <label class="sr-only" for="preset">プリセット</label
               ><select id="preset">
@@ -137,24 +161,43 @@
                 </svg>
               </button>
             </div>
-            <div class="fields equipment-fields">
-              <label
-                >メーカー<input
-                  id="make"
-                  placeholder="Nikon"
-                  maxlength="250" /></label
-              ><label
-                >カメラ<input
-                  id="model"
-                  placeholder="FM2"
-                  maxlength="250" /></label
-              ><label class="full-width"
-                >レンズ<input
-                  id="lens"
-                  placeholder="Nikkor 50mm f/1.4"
-                  maxlength="250"
-              /></label>
+            <div class="equipment-summary" aria-label="撮影機材">
+              <div class="equipment-camera">
+                <svg class="icon" aria-hidden="true">
+                  <use href="#i-camera" />
+                </svg>
+                <div>
+                  <span id="make-value">カメラ未設定</span
+                  ><strong id="model-value">機材を設定</strong>
+                </div>
+              </div>
+              <p id="lens-value">レンズ未設定</p>
             </div>
+            <details id="equipment-editor" class="equipment-editor">
+              <summary>
+                機材を編集<svg class="icon chevron" aria-hidden="true">
+                  <use href="#i-chevron" />
+                </svg>
+              </summary>
+              <div class="fields equipment-fields">
+                <label
+                  >メーカー<input
+                    id="make"
+                    placeholder="Nikon"
+                    maxlength="250" /></label
+                ><label
+                  >カメラ<input
+                    id="model"
+                    placeholder="FM2"
+                    maxlength="250" /></label
+                ><label class="full-width"
+                  >レンズ<input
+                    id="lens"
+                    placeholder="Nikkor 50mm f/1.4"
+                    maxlength="250"
+                /></label>
+              </div>
+            </details>
             <details id="preset-editor" class="preset-editor">
               <summary>
                 <svg class="icon" aria-hidden="true"><use href="#i-save" /></svg
@@ -187,7 +230,7 @@
           </section>
           <section class="settings-section">
             <div class="section-heading">
-              <h2>フィルム ISO</h2>
+              <h2>フィルム感度</h2>
               <span>全写真に適用</span>
             </div>
             <div class="iso-row">
@@ -211,7 +254,7 @@
             <span id="iso-hint" class="sr-only">ISOは1〜4294967295の整数</span>
           </section>
           <section class="settings-section exposure-section">
-            <h2>露出</h2>
+            <h2>露出情報</h2>
             <fieldset class="modes">
               <legend class="sr-only">露出の設定方法</legend>
               <label
@@ -236,26 +279,6 @@
             >写真は端末内だけで処理
           </p>
         </aside>
-        <section class="workspace" aria-label="写真一覧">
-          <div class="list-heading">
-            <h2>ファイル</h2>
-            <span>ファイル名順</span>
-          </div>
-          <div id="photo-list">
-            <div class="empty">
-              <svg class="empty-icon icon" aria-hidden="true">
-                <use href="#i-photo" />
-              </svg>
-              <h3>写真を選んで、はじめましょう</h3>
-              <p>JPEGをまとめて選択できます</p>
-              <label for="files" class="button secondary"
-                ><svg class="icon" aria-hidden="true">
-                  <use href="#i-plus" /></svg
-                >写真を選ぶ</label
-              >
-            </div>
-          </div>
-        </section>
         <section class="export-bar" aria-label="書き出し">
           <div class="export-main">
             <div class="export-summary">
@@ -306,7 +329,7 @@
           <h3>写真を選ぶ → 設定 → 書き出す</h3>
           <p>
             フィルム撮影時のカメラ・レンズ・ISOを設定し、JPEGのEXIFをまとめて編集します。写真を選び直すと一覧と個別の露出を入れ替えます。合計256
-            MiB・200枚まで選択できます。
+            MiB・200枚まで選択できます。プレビューは表示専用です。書き出すJPEGには使用しません。
           </p>
         </section>
         <section>

@@ -15,6 +15,10 @@ const decode = (bytes) => {
   );
   return exifReader(bytes.subarray(s.payload, s.end));
 };
+const imageData = (bytes) => {
+  const scan = jpegSegments(bytes).find((s) => s.marker === 0xda);
+  return Buffer.from(bytes).subarray(scan.start);
+};
 async function download(page) {
   const event = page.waitForEvent("download");
   await page.getByRole("link", { name: "ZIPを保存" }).click();
@@ -37,6 +41,7 @@ test("36 photos batch edit, duplicate-safe ZIP, failures named, no upload", asyn
   list.push(photo("broken.jpg", new Uint8Array([1, 2, 3])));
   await page.locator("#files").setInputFiles(list);
   await expect(page.locator("#file-count")).toHaveText("37 枚");
+  await page.locator("#equipment-editor summary").click();
   await page.locator("#make").fill("Nikon");
   await page.locator("#model").fill("FM2");
   await page.locator("#lens").fill("Nikkor 50mm");
@@ -52,6 +57,7 @@ test("36 photos batch edit, duplicate-safe ZIP, failures named, no upload", asyn
   expect(new Set(files.map((f) => f.name)).size).toBe(36);
   for (const f of files) {
     const d = decode(f.data);
+    expect(imageData(f.data)).toEqual(imageData(fixture()));
     expect(d.Image.Model).toBe("FM2");
     expect(d.Photo.FNumber).toBe(5.6);
     expect(d.Photo.ExposureTime).toBe(1 / 60);
@@ -115,6 +121,7 @@ test("preset CRUD persists through reload, fully offline reload/edit/download", 
   await expect(page.locator("#offline-status")).toContainText(
     "オフライン準備完了",
   );
+  await page.locator("#equipment-editor summary").click();
   await page.locator("#make").fill("Nikon");
   await page.locator("#model").fill("FM2");
   await page.locator("#lens").fill("50mm");
@@ -124,6 +131,7 @@ test("preset CRUD persists through reload, fully offline reload/edit/download", 
   await page.reload();
   await page.locator("#preset").selectOption({ label: "My FM2" });
   await expect(page.locator("#model")).toHaveValue("FM2");
+  await page.locator("#equipment-editor summary").click();
   await page.locator("#lens").fill("35mm");
   await page.locator("#preset-editor summary").click();
   await page.locator("#update-preset").click();
@@ -185,6 +193,7 @@ test("help is available on demand, returns focus, and preserves editing inputs",
   page,
 }) => {
   await page.goto("/");
+  await page.locator("#equipment-editor summary").click();
   await page.locator("#make").fill("Nikon");
   await expect(page.getByRole("dialog")).not.toBeVisible();
   await page.getByRole("button", { name: "ヘルプ", exact: true }).click();
@@ -221,7 +230,7 @@ test("tablet workspace keeps export in view, touch controls fit, and clearing re
       const list = document.querySelector(".workspace").getBoundingClientRect();
       const process = box("process");
       return {
-        sideBySide: settings.right <= list.left,
+        sideBySide: list.right <= settings.left,
         exportVisible: process.top >= 0 && process.bottom <= innerHeight,
         fits: document.documentElement.scrollWidth <= innerWidth,
         touch: [
@@ -268,4 +277,66 @@ test("offline setup errors remain available in touch-accessible help", async ({
   await page.locator("#open-help").click();
   await expect(page.getByRole("dialog")).toContainText("CACHE_TEST_ERROR");
   await expect(page.getByRole("dialog")).toContainText("接続中は利用できます");
+});
+
+test("photo previews stay attached to each file, survive mode changes, and release URLs on clear", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    const create = URL.createObjectURL.bind(URL),
+      revoke = URL.revokeObjectURL.bind(URL);
+    window.activePhotoURLs = new Set();
+    URL.createObjectURL = (blob) => {
+      const url = create(blob);
+      window.activePhotoURLs.add(url);
+      return url;
+    };
+    URL.revokeObjectURL = (url) => {
+      window.activePhotoURLs.delete(url);
+      revoke(url);
+    };
+  });
+  await page.goto("/");
+  const large = await page.evaluate(async () => {
+    const canvas = document.createElement("canvas");
+    canvas.width = 2400;
+    canvas.height = 1600;
+    canvas.getContext("2d").fillRect(0, 0, 2400, 1600);
+    const blob = await new Promise((resolve) =>
+      canvas.toBlob(resolve, "image/jpeg"),
+    );
+    return [...new Uint8Array(await blob.arrayBuffer())];
+  });
+
+  await page
+    .locator("#files")
+    .setInputFiles([
+      photo("02.jpg"),
+      photo("01.jpg", new Uint8Array(large)),
+      photo("broken.jpg", new Uint8Array([0, 1, 2])),
+    ]);
+  const first = page.locator(".photo").first();
+  await expect(first.locator(".photo-preview")).toHaveClass(/loaded/);
+  await expect(first.locator("img")).toHaveAttribute("alt", "01.jpg");
+  const source = await first.locator("img").getAttribute("src");
+  const dimensions = await first.locator("img").evaluate(async (img) => {
+    await img.decode();
+    return [img.naturalWidth, img.naturalHeight];
+  });
+  expect(Math.max(...dimensions)).toBeLessThanOrEqual(480);
+  await page.getByRole("radio", { name: "個別入力" }).check();
+  await expect(first.locator("img")).toHaveAttribute("src", source);
+  await first.locator("select").first().selectOption("4");
+  await page.getByRole("radio", { name: "一括入力" }).check();
+  await page.locator("#batch-fields select").first().selectOption("8");
+  await expect(first.locator(".photo-exposure")).toContainText("f/8");
+  await page.getByRole("radio", { name: "個別入力" }).check();
+  await expect(first.locator("select").first()).toHaveValue("4");
+  await expect(
+    page.locator(".photo").last().locator(".photo-preview"),
+  ).toHaveClass(/unavailable/);
+  await page.locator("#clear-files").click();
+  await expect
+    .poll(() => page.evaluate(() => window.activePhotoURLs.size))
+    .toBe(0);
 });

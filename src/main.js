@@ -2,6 +2,7 @@ import "./style.css";
 import { editJpeg, validateSettings } from "./exif.js";
 import { createZip } from "./zip.js";
 import { loadPresets, savePresets } from "./presets.js";
+import { createThumbnails } from "./thumbnails.js";
 const $ = (id) => document.getElementById(id);
 const el = (tag, text, cls) => {
   const e = document.createElement(tag);
@@ -15,6 +16,12 @@ let photos = [],
   busy = false,
   controller = null;
 const MAX = 256 * 1024 * 1024;
+const thumbnails = createThumbnails($("photo-list"));
+function equipmentSummary() {
+  $("make-value").textContent = $("make").value.trim() || "カメラ未設定";
+  $("model-value").textContent = $("model").value.trim() || "機材を設定";
+  $("lens-value").textContent = $("lens").value.trim() || "レンズ未設定";
+}
 function message(s) {
   $("message").textContent = s;
   $("message").hidden = !s;
@@ -25,6 +32,9 @@ function invalidate() {
     zipUrl = null;
   }
   $("download").hidden = true;
+  if (mode() === "batch")
+    for (const cell of document.querySelectorAll(".photo-exposure"))
+      cell.textContent = `${batch.f ? "f/" + batch.f : "F —"}   ·   ${batch.time ? batch.time + " s" : "SS —"}`;
   $("download").removeAttribute("href");
   $("report").replaceChildren();
   $("progress").hidden = true;
@@ -127,6 +137,7 @@ $("batch-fields").append(
 const emptyState = $("photo-list").firstElementChild.cloneNode(true);
 function renderPhotos() {
   const list = $("photo-list");
+  thumbnails.disconnect();
   list.replaceChildren();
   if (!photos.length) {
     list.append(emptyState.cloneNode(true));
@@ -140,7 +151,12 @@ function renderPhotos() {
       el("span", p.file.name, "photo-name"),
       el("span", `${(p.file.size / 1048576).toFixed(1)} MiB`, "photo-size"),
     );
-    row.append(top);
+    const preview = el("div", undefined, "photo-preview");
+    const img = el("img");
+    img.alt = p.file.name;
+    img.decoding = "async";
+    preview.append(img, el("span", "プレビューなし", "preview-fallback"));
+    row.append(preview, top);
     if (mode() === "individual") {
       const fields = el("div", undefined, "fields two");
       fields.append(
@@ -155,6 +171,17 @@ function renderPhotos() {
       row.append(fields);
     }
     list.append(row);
+    thumbnails.observe(img, p.file);
+    if (mode() !== "individual") {
+      const exposure = mode() === "batch" ? batch : { f: "", time: "" };
+      row.append(
+        el(
+          "div",
+          `${exposure.f ? "f/" + exposure.f : "F —"}   ·   ${exposure.time ? exposure.time + " s" : "SS —"}`,
+          "photo-exposure",
+        ),
+      );
+    }
   });
 }
 function selection(files) {
@@ -169,6 +196,7 @@ function selection(files) {
     $("files").value = "";
     return;
   }
+  thumbnails.reset();
   photos = files
     .map((file) => ({ file, f: "", time: "" }))
     .sort((a, b) =>
@@ -207,7 +235,10 @@ for (const b of document.querySelectorAll("[data-iso]"))
     invalidate();
   });
 for (const id of ["make", "model", "lens", "iso"])
-  $(id).addEventListener("input", invalidate);
+  $(id).addEventListener("input", () => {
+    equipmentSummary();
+    invalidate();
+  });
 function renderPresets(selected = "") {
   $("preset").replaceChildren(new Option("プリセットを選択", ""));
   presets.forEach((p) => $("preset").append(new Option(p.name, p.id)));
@@ -228,6 +259,7 @@ $("preset").addEventListener("change", () => {
     for (const k of ["make", "model", "lens"]) $(k).value = p[k];
     $("preset-name").value = p.name;
   } else $("preset-name").value = "";
+  equipmentSummary();
   invalidate();
 });
 function persist(next, selected, notice) {
