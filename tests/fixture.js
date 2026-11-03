@@ -66,6 +66,8 @@ export function fixture(le = true) {
   );
   const exif = ifd([
     str(0x9003, "1998:07:12 15:30:00"),
+    str(0x9291, "123"),
+    str(0x9011, "+09:00"),
     str(0x9004, "2026:10:27 10:00:00"),
     num(0xa002, 16),
     num(0xa003, 12),
@@ -86,7 +88,7 @@ export function fixture(le = true) {
     str(0xa435, "copy-lens-456"),
     maker,
   ]);
-  const gps = ifd([str(1, "N"), rat(2, 35, 1)]);
+  const gps = ifd([str(1, "N"), rat(2, 35, 1), str(0x1d, "1998:07:12")]);
   const thumb = ifd([num(0x112, 1, 3)]);
   const root = ifd(
     [

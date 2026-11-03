@@ -3,6 +3,7 @@ import { editJpeg, validateSettings } from "./exif.js";
 import { createZip } from "./zip.js";
 import { loadPresets, savePresets } from "./presets.js";
 import { createThumbnails } from "./thumbnails.js";
+import { createCaptureDates } from "./capture-dates-ui.js";
 const $ = (id) => document.getElementById(id);
 const el = (tag, text, cls) => {
   const e = document.createElement(tag);
@@ -17,6 +18,10 @@ let photos = [],
   controller = null;
 const MAX = 256 * 1024 * 1024;
 const thumbnails = createThumbnails($("photo-list"));
+const captureDates = createCaptureDates(() => {
+  renderPhotos();
+  invalidate();
+});
 function equipmentSummary() {
   $("make-value").textContent = $("make").value.trim() || "カメラ未設定";
   $("model-value").textContent = $("model").value.trim() || "機材を設定";
@@ -170,6 +175,8 @@ function renderPhotos() {
       );
       row.append(fields);
     }
+    const dateControl = captureDates.control(p);
+    if (dateControl) row.append(dateControl);
     list.append(row);
     thumbnails.observe(img, p.file);
     if (mode() !== "individual") {
@@ -353,6 +360,7 @@ $("editor").addEventListener("submit", async (event) => {
             : mode() === "individual"
               ? p
               : { f: "", time: "" }),
+          date: captureDates.forPhoto(p),
         });
       } catch (e) {
         throw new Error(`${p.file.name}：${e.message}`);
@@ -370,6 +378,7 @@ $("editor").addEventListener("submit", async (event) => {
       : mode() === "individual"
         ? { f: p.f, time: p.time }
         : { f: "", time: "" }),
+    date: captureDates.forPhoto(p),
   }));
   lock(true);
   controller = new AbortController();

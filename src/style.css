@@ -988,3 +988,34 @@ dialog::backdrop {
     padding-left: 20px;
   }
 }
+
+.date-fields {
+  margin-top: 14px;
+}
+#date-candidates {
+  display: grid;
+  gap: 12px;
+}
+#add-date {
+  margin-top: 12px;
+  width: 100%;
+}
+.photo-date {
+  display: block;
+  margin-top: 10px;
+  font-size: 11px;
+}
+.photo-date select {
+  font-size: 12px;
+  min-height: 44px;
+}
+.photo-date-summary {
+  margin: 8px 0 0;
+  color: #b4b5ad;
+  font-size: 11px;
+}
+input[type="date"] {
+  min-width: 0;
+  max-width: 100%;
+  min-height: 44px;
+}

@@ -340,3 +340,109 @@ test("photo previews stay attached to each file, survive mode changes, and relea
     .poll(() => page.evaluate(() => window.activePhotoURLs.size))
     .toBe(0);
 });
+
+function shootingDate(data) {
+  const s = jpegSegments(data).find(
+    (s) => s.marker === 0xe1 && data[s.payload] === 69,
+  );
+  // Minimal independent TIFF reading for the exact ASCII payload. A JS Date
+  // parser could silently turn unknown time components into midnight.
+  const bytes = data.subarray(s.payload + 6, s.end),
+    v = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength),
+    le = bytes[0] === 73;
+  const entry = (offset, tag) => {
+    for (let i = 0, n = v.getUint16(offset, le); i < n; i++) {
+      const p = offset + 2 + 12 * i;
+      if (v.getUint16(p, le) === tag)
+        return {
+          count: v.getUint32(p + 4, le),
+          offset: v.getUint32(p + 8, le),
+        };
+    }
+  };
+  const root = v.getUint32(4, le),
+    exif = entry(root, 0x8769),
+    date = entry(exif.offset, 0x9003);
+  return new TextDecoder()
+    .decode(bytes.subarray(date.offset, date.offset + date.count))
+    .replace(/\0$/, "");
+}
+test("batch capture date, blank time, and switching back to preserve original timestamp", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page
+    .locator("#files")
+    .setInputFiles(
+      Array.from({ length: 36 }, (_, i) => photo(`frame-${i}.jpg`)),
+    );
+  await page.locator("input[name=date-mode][value=batch]").check();
+  await page.locator("#process").click();
+  await expect(page.locator("#message")).toContainText("撮影日を入力");
+  await page.locator("#capture-date-batch").fill("2024-02-29");
+  await expect(page.locator(".photo-date-summary").first()).toContainText(
+    "2024/02/29",
+  );
+  await page.locator("#process").click();
+  await expect(page.locator("#result")).toContainText("成功 36 枚");
+  const files = await download(page);
+  expect(files).toHaveLength(36);
+  for (const f of files) {
+    expect(shootingDate(f.data)).toBe("2024:02:29   :  :  ");
+    expect(imageData(f.data)).toEqual(imageData(fixture()));
+  }
+  await page.locator("input[name=date-mode][value=keep]").check();
+  await expect(page.locator("#download")).toBeHidden();
+  await page.locator("#process").click();
+  await expect(page.locator("#result")).toContainText("成功 36 枚");
+  for (const f of await download(page))
+    expect(shootingDate(f.data)).toBe("1998:07:12 15:30:00");
+});
+test("date candidates apply to individual files and remain independent of exposure mode", async ({
+  page,
+  context,
+}) => {
+  await page.goto("/");
+  await expect(page.locator("#offline-status")).toContainText("準備完了");
+  await page.locator("input[name=date-mode][value=individual]").check();
+  await page.locator("#date-candidates input").first().fill("2025-03-04");
+  await page.locator("#add-date").click();
+  await page.locator("#date-candidates input").nth(1).fill("2025-04-01");
+  await context.setOffline(true);
+  await page
+    .locator("#files")
+    .setInputFiles([photo("03.jpg"), photo("01.jpg"), photo("02.jpg")]);
+  await page
+    .getByRole("combobox", { name: "01.jpg の撮影日", exact: true })
+    .selectOption("date-2");
+  await page
+    .getByRole("combobox", { name: "02.jpg の撮影日", exact: true })
+    .selectOption("date-1");
+  await page.getByRole("radio", { name: "個別入力", exact: true }).check();
+  await page
+    .locator(".photo")
+    .first()
+    .locator(".fields select")
+    .first()
+    .selectOption("4");
+  await page.locator("#date-candidates input").nth(1).fill("2025-04-02");
+  await expect(
+    page.getByRole("combobox", { name: "01.jpg の撮影日", exact: true }),
+  ).toHaveValue("date-2");
+  await expect(
+    page.locator(".photo").first().locator(".fields select").first(),
+  ).toHaveValue("4");
+  await page.locator("#process").click();
+  await expect(page.locator("#result")).toContainText("成功 3 枚");
+  const files = await download(page);
+  expect(files.map((f) => [f.name, shootingDate(f.data)])).toEqual([
+    ["01.jpg", "2025:04:02   :  :  "],
+    ["02.jpg", "2025:03:04   :  :  "],
+    ["03.jpg", "1998:07:12 15:30:00"],
+  ]);
+  expect(decode(files[0].data).Photo.FNumber).toBe(4);
+  await page.locator("#date-candidates input").first().fill("");
+  await page.locator("#process").click();
+  await expect(page.locator("#message")).toContainText("02.jpg：撮影日1を入力");
+  await expect(page.locator("#download")).toBeHidden();
+});

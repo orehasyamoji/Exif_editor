@@ -179,16 +179,124 @@ test("APP1 capacity limit is a per-file error, never truncates metadata", () => 
   assert.throws(() => editJpeg(large, settings), /64KB/);
 });
 
-test('standard exposure choices include f/1 and zero APEX without dummy unset values', async () => {
-  for (const f of ['1','1.2','1.4','1.8','2','2.8','4','5.6','8','11','16','22','32']) {
-    const d=decode(await bytes(editJpeg(base,{...settings,f,time:'1'})));
-    assert.equal(d.Photo.FNumber,Number(f));
-    assert.ok(Math.abs(d.Photo.ApertureValue-2*Math.log2(Number(f)))<1e-8);
-    assert.equal(d.Photo.ShutterSpeedValue,0);
+test("standard exposure choices include f/1 and zero APEX without dummy unset values", async () => {
+  for (const f of [
+    "1",
+    "1.2",
+    "1.4",
+    "1.8",
+    "2",
+    "2.8",
+    "4",
+    "5.6",
+    "8",
+    "11",
+    "16",
+    "22",
+    "32",
+  ]) {
+    const d = decode(
+      await bytes(editJpeg(base, { ...settings, f, time: "1" })),
+    );
+    assert.equal(d.Photo.FNumber, Number(f));
+    assert.ok(
+      Math.abs(d.Photo.ApertureValue - 2 * Math.log2(Number(f))) < 1e-8,
+    );
+    assert.equal(d.Photo.ShutterSpeedValue, 0);
   }
-  for(const time of ['1/8000','1/4000','1/2000','1/1000','1/500','1/250','1/125','1/60','1/30','1/15','1/8','1/4','1/2','1','2','4','8','15','30']) {
-    const d=decode(await bytes(editJpeg(base,{...settings,time}))),[n,den='1']=time.split('/'),expected=Number(n)/Number(den);
-    assert.equal(d.Photo.ExposureTime,expected);
-    assert.ok(Math.abs(d.Photo.ShutterSpeedValue+Math.log2(expected))<1e-8);
+  for (const time of [
+    "1/8000",
+    "1/4000",
+    "1/2000",
+    "1/1000",
+    "1/500",
+    "1/250",
+    "1/125",
+    "1/60",
+    "1/30",
+    "1/15",
+    "1/8",
+    "1/4",
+    "1/2",
+    "1",
+    "2",
+    "4",
+    "8",
+    "15",
+    "30",
+  ]) {
+    const d = decode(await bytes(editJpeg(base, { ...settings, time }))),
+      [n, den = "1"] = time.split("/"),
+      expected = Number(n) / Number(den);
+    assert.equal(d.Photo.ExposureTime, expected);
+    assert.ok(Math.abs(d.Photo.ShutterSpeedValue + Math.log2(expected)) < 1e-8);
+  }
+});
+
+// Do not trim spaces: blank time components must survive byte-for-byte.
+function asciiTag(t, entries, tag) {
+  const entry = entries.find((e) => e.tag === tag);
+  return entry
+    ? new TextDecoder()
+        .decode(t.bytes.subarray(entry.offset, entry.offset + entry.count))
+        .replace(/\0$/, "")
+    : undefined;
+}
+for (const le of [true, false])
+  test(`capture date only has blank time, cleans dependent tags, and preserves other data (${le ? "II" : "MM"})`, async () => {
+    const before = fixture(le),
+      source = tiff(before);
+    const result = editJpeg(before, { ...settings, date: "2024-02-29" }),
+      after = await bytes(result),
+      t = tiff(after);
+    const date = t.exif.entries.find((e) => e.tag === 0x9003);
+    assert.equal(date.type, 2);
+    assert.equal(date.count, 20);
+    assert.equal(asciiTag(t, t.exif.entries, 0x9003), "2024:02:29   :  :  ");
+    assert.ok(!t.exif.entries.some((e) => [0x9291, 0x9011].includes(e.tag)));
+    assert.equal(
+      asciiTag(t, t.exif.entries, 0x9004),
+      asciiTag(source, source.exif.entries, 0x9004),
+    );
+    assert.equal(
+      asciiTag(t, t.root.entries, 0x132),
+      asciiTag(source, source.root.entries, 0x132),
+    );
+    assert.equal(asciiTag(t, t.gps.entries, 0x1d), "1998:07:12");
+    assert.deepEqual(withoutExif(after), withoutExif(before));
+    assert.deepEqual(
+      t.bytes.subarray(8, source.bytes.length),
+      source.bytes.subarray(8),
+    );
+    assert.ok(result.warnings.some((w) => w.includes("時刻は空白")));
+    const preserved = tiff(
+      await bytes(editJpeg(before, { ...settings, date: null })),
+    );
+    for (const tag of [0x9003, 0x9291, 0x9011])
+      assert.equal(
+        asciiTag(preserved, preserved.exif.entries, tag),
+        asciiTag(source, source.exif.entries, tag),
+      );
+  });
+test("date validation rejects missing, invalid, and timezone-dependent date strings", async () => {
+  for (const date of [
+    "",
+    "2023-02-29",
+    "2024-02-30",
+    "2026-13-01",
+    "2026-00-01",
+    "2026-01-00",
+    "0000-01-01",
+    "2026/01/01",
+    "2026-1-1",
+    "2026-01-01T00:00:00Z",
+  ])
+    assert.throws(() => editJpeg(base, { ...settings, date }), /撮影日/);
+  for (const date of ["0001-01-01", "0099-12-31", "2000-02-29", "9999-12-31"]) {
+    const t = tiff(await bytes(editJpeg(base, { ...settings, date })));
+    assert.equal(
+      asciiTag(t, t.exif.entries, 0x9003),
+      date.replaceAll("-", ":") + "   :  :  ",
+    );
   }
 });

@@ -1,3 +1,4 @@
+import { validateCaptureDate, formatCaptureDate } from "./capture-date.js";
 // Append replacement IFDs without relocating any existing TIFF data. All old
 // offsets (GPS, thumbnails, unknown tags, MakerNotes) remain relative to TIFF.
 const enc = new TextEncoder();
@@ -169,7 +170,13 @@ export function validateSettings(s) {
     )
       fail("機材名は NUL を含まない 1024 バイト以内の文字列にしてください。");
   }
-  return { ...s, iso, f: parseExposure(s.f), time: parseExposure(s.time) };
+  return {
+    ...s,
+    iso,
+    f: parseExposure(s.f),
+    time: parseExposure(s.time),
+    date: validateCaptureDate(s.date),
+  };
 }
 function rational(n, signed, le) {
   const limit = signed ? 0x7fffffff : 0xffffffff;
@@ -198,7 +205,8 @@ function rational(n, signed, le) {
     x = 1 / fraction;
   }
   if (n < 0) a = -a;
-  if (!signed && a === 0 && n !== 0) fail("値が小さすぎて EXIF に記録できません。");
+  if (!signed && a === 0 && n !== 0)
+    fail("値が小さすぎて EXIF に記録できません。");
   const b = new Uint8Array(8),
     v = new DataView(b.buffer);
   if (signed) v.setInt32(0, a, le);
@@ -290,6 +298,23 @@ export function editJpeg(bytes, settings) {
     number(0x8830, 3, 3),
     number(0x8833, s.iso),
   ];
+  const dateTags = s.date === null ? [] : [0x9003, 0x9291, 0x9011];
+  if (s.date !== null) {
+    exifAdd.push(ascii(0x9003, formatCaptureDate(s.date)));
+    warnings.push(
+      "撮影日のみを記録し、時刻は空白にしました。一部の写真管理ソフトでは表示できない場合があります。",
+    );
+    if (
+      segments.some(
+        (x) => x.marker === 0xe1 && !starts(bytes, x.payload, EXIF),
+      ) ||
+      t.exif.entries.some((e) => e.tag === TAG.MakerNote) ||
+      t.root.next
+    )
+      warnings.push(
+        "XMP・MakerNote・サムネイル内の撮影日時は更新しません。別記された日時が優先表示される場合があります。",
+      );
+  }
   if (s.lens) exifAdd.push(ascii(TAG.LensModel, s.lens));
   if (s.f !== null)
     exifAdd.push(
@@ -317,7 +342,7 @@ export function editJpeg(bytes, settings) {
   const isoTags = [TAG.ISO, 0x8830, 0x8831, 0x8832, 0x8833, 0x8834, 0x8835];
   const exifEntries = replace(
     t.exif.entries,
-    [...exposureTags, ...lensTags, ...isoTags, 0xa431, 0x9205],
+    [...exposureTags, ...lensTags, ...isoTags, ...dateTags, 0xa431, 0x9205],
     exifAdd,
   );
   if (
@@ -350,7 +375,15 @@ export function editJpeg(bytes, settings) {
   if (s.model) rootAdd.push(ascii(TAG.Model, s.model));
   const rootEntries = replace(
     t.root.entries,
-    [TAG.Make, TAG.Model, TAG.Exif, ...exposureTags, ...isoTags, ...lensTags],
+    [
+      TAG.Make,
+      TAG.Model,
+      TAG.Exif,
+      ...exposureTags,
+      ...isoTags,
+      ...lensTags,
+      ...dateTags,
+    ],
     rootAdd,
   );
   const rootOffset = writeIfd(rootEntries, t.root.next);

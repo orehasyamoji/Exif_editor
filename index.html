@@ -274,6 +274,49 @@
             <p id="mode-hint" class="context-hint">F値・シャッターを削除</p>
             <div id="batch-fields" class="fields two" hidden></div>
           </section>
+          <section class="settings-section capture-date-section">
+            <h2>撮影日</h2>
+            <fieldset class="modes date-modes">
+              <legend class="sr-only">撮影日の設定方法</legend>
+              <label
+                ><input
+                  type="radio"
+                  name="date-mode"
+                  value="keep"
+                  checked
+                /><span>書き換えない</span></label
+              >
+              <label
+                ><input type="radio" name="date-mode" value="batch" /><span
+                  >一括設定</span
+                ></label
+              >
+              <label
+                ><input type="radio" name="date-mode" value="individual" /><span
+                  >個別設定</span
+                ></label
+              >
+            </fieldset>
+            <div id="date-batch-fields" class="date-fields" hidden>
+              <label
+                >全写真の撮影日<input
+                  id="capture-date-batch"
+                  type="date"
+                  min="0001-01-01"
+                  max="9999-12-31"
+              /></label>
+            </div>
+            <div id="date-individual-fields" class="date-fields" hidden>
+              <div id="date-candidates"></div>
+              <button id="add-date" class="secondary" type="button">
+                <svg class="icon" aria-hidden="true"><use href="#i-plus" /></svg
+                >撮影日を追加
+              </button>
+            </div>
+            <p id="date-compatibility" class="context-hint" hidden>
+              時刻は空白 · 一部のソフトでは非対応
+            </p>
+          </section>
           <p class="local-note">
             <svg class="icon" aria-hidden="true"><use href="#i-shield" /></svg
             >写真は端末内だけで処理
@@ -336,6 +379,15 @@
           <h3>空欄・未設定の扱い</h3>
           <p>
             空欄の機材タグは削除します。露出の「未設定」は複写時のF値・シャッターを削除します。一括入力・個別入力でも、それぞれ独立して未設定にできます。シャッターは候補のほか「1/125」「0.008」のように入力できます。ISOは1〜4294967295の整数です。
+          </p>
+        </section>
+        <section>
+          <h3>撮影日と時刻</h3>
+          <p>
+            「書き換えない」は元の撮影日時を保持します。「一括設定」は全写真に同じ日付を設定します。「個別設定」は撮影日1・撮影日2…を先に入力し、各写真の撮影日欄で選びます。「元の撮影日を保持」を選んだ写真は変更しません。
+          </p>
+          <p>
+            変更時はEXIFのDateTimeOriginalへ日付を記録し、時刻は空白にします。0時などのダミー時刻は入れません。対応しない写真管理ソフトでは日付が表示されない、または0時と表示される場合があります。元の秒以下・撮影時タイムゾーンは削除します。デジタル化日時・ファイル変更日時・GPS日時は保持します。撮影日候補はプリセットに保存せず、再読み込みで消えます。
           </p>
         </section>
         <section>
