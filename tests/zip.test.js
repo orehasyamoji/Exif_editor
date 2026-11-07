@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createZip, uniqueName } from "../src/zip.js";
+import { createZip, uniqueName, zipTimestamp } from "../src/zip.js";
 import { loadPresets, savePresets } from "../src/presets.js";
 import { base } from "./fixture.js";
 import { unzip } from "./zip-helper.js";
@@ -55,4 +55,61 @@ test("presets persist equipment only and storage errors propagate", () => {
   );
   storage.setItem("film-exif-presets-v1", "bad");
   assert.throws(() => loadPresets(storage));
+});
+
+test("ZIP uses individual shooting dates and preserves original modified time for unchanged photos", async () => {
+  const lastModified = new Date(2026, 10, 7, 21, 30, 31).getTime();
+  const dates = [
+    "2025-04-02",
+    "2025-03-04",
+    null,
+    "1980-01-01",
+    "2107-12-31",
+    "2024-02-29",
+  ];
+  const zip = await createZip(
+    dates.map((captureDate, i) => ({
+      name: i + ".jpg",
+      blob: new Blob([base]),
+      captureDate,
+      lastModified,
+    })),
+  );
+  const files = unzip(Buffer.from(await zip.arrayBuffer()));
+  assert.deepEqual(
+    files.map((f) => f.modified),
+    [
+      [2025, 4, 2, 0, 0, 0],
+      [2025, 3, 4, 0, 0, 0],
+      [2026, 11, 7, 21, 30, 30],
+      [1980, 1, 1, 0, 0, 0],
+      [2107, 12, 31, 0, 0, 0],
+      [2024, 2, 29, 0, 0, 0],
+    ],
+  );
+  for (const file of files) assert.deepEqual(file.data, Buffer.from(base));
+});
+test("ZIP range overflow warns and uses original file time; unusable source dates use export time", async () => {
+  const lastModified = new Date(2025, 5, 15, 12, 34, 56).getTime();
+  for (const captureDate of ["1979-12-31", "2108-01-01", "0001-01-01"]) {
+    const stamp = zipTimestamp({ captureDate, lastModified });
+    assert.match(stamp.warning, /ZIP/);
+    const zip = await createZip([
+      { name: "x.jpg", blob: new Blob([base]), timestamp: stamp },
+    ]);
+    assert.deepEqual(
+      unzip(Buffer.from(await zip.arrayBuffer()))[0].modified,
+      [2025, 6, 15, 12, 34, 56],
+    );
+  }
+  const fallback = new Date(2026, 10, 7, 22, 0, 0);
+  assert.deepEqual(
+    zipTimestamp({ lastModified: NaN }, fallback),
+    zipTimestamp({ lastModified: fallback.getTime() }),
+  );
+  assert.deepEqual(
+    zipTimestamp({ lastModified: 0 }, fallback),
+    zipTimestamp({ lastModified: fallback.getTime() }),
+  );
+  assert.throws(() => zipTimestamp({ captureDate: "2025-02-30" }), /撮影日/);
 });

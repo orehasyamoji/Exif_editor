@@ -16,12 +16,37 @@ export function unzip(buffer) {
       buffer.readUInt32LE(p + 14),
       "independent CRC validation",
     );
-    files.push({ name, data });
+    const date = buffer.readUInt16LE(p + 12),
+      time = buffer.readUInt16LE(p + 10);
+    files.push({
+      name,
+      data,
+      modified: [
+        1980 + (date >> 9),
+        (date >> 5) & 15,
+        date & 31,
+        time >> 11,
+        (time >> 5) & 63,
+        (time & 31) * 2,
+      ],
+      date,
+      time,
+    });
     p = start + size;
   }
   const central = p;
   for (const file of files) {
     assert.equal(buffer.readUInt32LE(p), 0x02014b50);
+    assert.equal(
+      buffer.readUInt16LE(p + 12),
+      file.time,
+      "local and central ZIP times match",
+    );
+    assert.equal(
+      buffer.readUInt16LE(p + 14),
+      file.date,
+      "local and central ZIP dates match",
+    );
     const n = buffer.readUInt16LE(p + 28);
     assert.equal(buffer.toString("utf8", p + 46, p + 46 + n), file.name);
     p += 46 + n + buffer.readUInt16LE(p + 30) + buffer.readUInt16LE(p + 32);

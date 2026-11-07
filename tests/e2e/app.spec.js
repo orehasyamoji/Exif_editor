@@ -389,6 +389,7 @@ test("batch capture date, blank time, and switching back to preserve original ti
   expect(files).toHaveLength(36);
   for (const f of files) {
     expect(shootingDate(f.data)).toBe("2024:02:29   :  :  ");
+    expect(f.modified).toEqual([2024, 2, 29, 0, 0, 0]);
     expect(imageData(f.data)).toEqual(imageData(fixture()));
   }
   await page.locator("input[name=date-mode][value=keep]").check();
@@ -440,6 +441,8 @@ test("date candidates apply to individual files and remain independent of exposu
     ["02.jpg", "2025:03:04   :  :  "],
     ["03.jpg", "1998:07:12 15:30:00"],
   ]);
+  expect(files[0].modified).toEqual([2025, 4, 2, 0, 0, 0]);
+  expect(files[1].modified).toEqual([2025, 3, 4, 0, 0, 0]);
   expect(decode(files[0].data).Photo.FNumber).toBe(4);
   await page.locator("#date-candidates input").first().fill("");
   await page.locator("#process").click();

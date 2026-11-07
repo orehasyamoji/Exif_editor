@@ -1,6 +1,6 @@
 import "./style.css";
 import { editJpeg, validateSettings } from "./exif.js";
-import { createZip } from "./zip.js";
+import { createZip, zipTimestamp } from "./zip.js";
 import { loadPresets, savePresets } from "./presets.js";
 import { createThumbnails } from "./thumbnails.js";
 import { createCaptureDates } from "./capture-dates-ui.js";
@@ -400,7 +400,12 @@ $("editor").addEventListener("submit", async (event) => {
           new Uint8Array(await p.file.arrayBuffer()),
           settings[i],
         );
-        output.push({ name: p.file.name, blob: result.blob });
+        const timestamp = zipTimestamp({
+          captureDate: settings[i].date,
+          lastModified: p.file.lastModified,
+        });
+        if (timestamp.warning) result.warnings.push(timestamp.warning);
+        output.push({ name: p.file.name, blob: result.blob, timestamp });
         success++;
         if (result.warnings.length) warned++;
         report(
