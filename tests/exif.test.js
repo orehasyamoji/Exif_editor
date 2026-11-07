@@ -300,3 +300,56 @@ test("date validation rejects missing, invalid, and timezone-dependent date stri
     );
   }
 });
+
+for (const le of [true, false])
+  test(`Photos compatibility writes readable midnight dates without stale standard timestamps (${le ? "II" : "MM"})`, async () => {
+    const original = fixture(le),
+      result = editJpeg(original, {
+        ...settings,
+        date: "2025-03-04",
+        photosCompatible: true,
+      }),
+      after = await bytes(result),
+      t = tiff(after),
+      read = decode(after);
+    assert.equal(asciiTag(t, t.exif.entries, 0x9003), "2025:03:04 00:00:00");
+    assert.equal(asciiTag(t, t.exif.entries, 0x9004), "2025:03:04 00:00:00");
+    assert.equal(asciiTag(t, t.root.entries, 0x132), "2025:03:04 00:00:00");
+    for (const tag of [0x9290, 0x9291, 0x9292])
+      assert.ok(!t.exif.entries.some((e) => e.tag === tag));
+    const offset = asciiTag(t, t.exif.entries, 0x9011);
+    assert.match(offset, /^[+-]\d{2}:\d{2}$/);
+    for (const tag of [0x9010, 0x9012])
+      assert.equal(asciiTag(t, t.exif.entries, tag), offset);
+    assert.equal(
+      read.Photo.DateTimeOriginal.toISOString(),
+      "2025-03-04T00:00:00.000Z",
+    );
+    assert.deepEqual(read.Photo.DateTimeDigitized, read.Photo.DateTimeOriginal);
+    assert.deepEqual(read.Image.DateTime, read.Photo.DateTimeOriginal);
+    assert.deepEqual(withoutExif(after), withoutExif(original));
+    assert.deepEqual(read.GPSInfo, decode(original).GPSInfo);
+    assert.ok(result.warnings.some((w) => w.includes("時刻は仮の値")));
+    // Preserve mode wins even if the compatibility checkbox is enabled.
+    const kept = tiff(
+        await bytes(
+          editJpeg(original, {
+            ...settings,
+            date: null,
+            photosCompatible: true,
+          }),
+        ),
+      ),
+      source = tiff(original);
+    for (const tag of [
+      0x9003, 0x9004, 0x9290, 0x9291, 0x9292, 0x9010, 0x9011, 0x9012,
+    ])
+      assert.equal(
+        asciiTag(kept, kept.exif.entries, tag),
+        asciiTag(source, source.exif.entries, tag),
+      );
+    assert.equal(
+      asciiTag(kept, kept.root.entries, 0x132),
+      asciiTag(source, source.root.entries, 0x132),
+    );
+  });

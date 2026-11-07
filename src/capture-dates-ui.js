@@ -33,11 +33,23 @@ export function createCaptureDates(onChange) {
       $("date-batch-fields").hidden = mode() !== "batch";
       $("date-individual-fields").hidden = mode() !== "individual";
       $("date-compatibility").hidden = mode() === "keep";
+      $("photos-compatible-field").hidden = mode() === "keep";
       onChange();
     });
+  const compatible = () => $("photos-compatible").checked;
+  function updateHint() {
+    $("date-compatibility").textContent = compatible()
+      ? "写真アプリ対応 · 0:00は仮の時刻"
+      : "EXIFは時刻なし · 一部ソフトでは非対応";
+  }
+  $("photos-compatible").addEventListener("change", () => {
+    updateHint();
+    onChange();
+  });
   $("capture-date-batch").addEventListener("input", onChange);
   renderCandidates();
   return {
+    compatible,
     forPhoto(photo) {
       if (mode() === "keep") return null;
       if (mode() === "batch") {
@@ -59,7 +71,7 @@ export function createCaptureDates(onChange) {
         caption.className = "photo-date-summary";
         caption.textContent =
           ($("capture-date-batch").value.replaceAll("-", "/") || "日付を入力") +
-          " · 時刻なし";
+          (compatible() ? " · 0:00" : " · 時刻なし");
         return caption;
       }
       const label = document.createElement("label");

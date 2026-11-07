@@ -1,4 +1,8 @@
-import { validateCaptureDate, formatCaptureDate } from "./capture-date.js";
+import {
+  validateCaptureDate,
+  formatCaptureDate,
+  captureDateOffset,
+} from "./capture-date.js";
 // Append replacement IFDs without relocating any existing TIFF data. All old
 // offsets (GPS, thumbnails, unknown tags, MakerNotes) remain relative to TIFF.
 const enc = new TextEncoder();
@@ -298,12 +302,28 @@ export function editJpeg(bytes, settings) {
     number(0x8830, 3, 3),
     number(0x8833, s.iso),
   ];
-  const dateTags = s.date === null ? [] : [0x9003, 0x9291, 0x9011];
+  const compatible = s.date !== null && s.photosCompatible === true;
+  const dateTags =
+    s.date === null
+      ? []
+      : compatible
+        ? [0x9003, 0x9004, 0x9290, 0x9291, 0x9292, 0x9010, 0x9011, 0x9012]
+        : [0x9003, 0x9291, 0x9011];
   if (s.date !== null) {
-    exifAdd.push(ascii(0x9003, formatCaptureDate(s.date)));
-    warnings.push(
-      "撮影日のみを記録し、時刻は空白にしました。一部の写真管理ソフトでは表示できない場合があります。",
-    );
+    const dateValue = formatCaptureDate(s.date, compatible);
+    exifAdd.push(ascii(0x9003, dateValue));
+    if (compatible) {
+      exifAdd.push(ascii(0x9004, dateValue));
+      const offset = captureDateOffset(s.date);
+      for (const tag of [0x9010, 0x9011, 0x9012])
+        exifAdd.push(ascii(tag, offset));
+      warnings.push(
+        "写真アプリ対応として撮影日時・デジタル化日時・変更日時を指定日の0:00に統一しました。時刻は仮の値で、端末のタイムゾーンを使用しています。",
+      );
+    } else
+      warnings.push(
+        "撮影日のみを記録し、時刻は空白にしました。一部の写真管理ソフトでは表示できない場合があります。",
+      );
     if (
       segments.some(
         (x) => x.marker === 0xe1 && !starts(bytes, x.payload, EXIF),
@@ -371,6 +391,7 @@ export function editJpeg(bytes, settings) {
   };
   const exifOffset = writeIfd(exifEntries, t.exif.next);
   const rootAdd = [number(TAG.Exif, exifOffset)];
+  if (compatible) rootAdd.push(ascii(0x132, formatCaptureDate(s.date, true)));
   if (s.make) rootAdd.push(ascii(TAG.Make, s.make));
   if (s.model) rootAdd.push(ascii(TAG.Model, s.model));
   const rootEntries = replace(
@@ -383,6 +404,7 @@ export function editJpeg(bytes, settings) {
       ...isoTags,
       ...lensTags,
       ...dateTags,
+      ...(compatible ? [0x132] : []),
     ],
     rootAdd,
   );

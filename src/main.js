@@ -348,6 +348,7 @@ $("editor").addEventListener("submit", async (event) => {
     model: $("model").value.trim(),
     lens: $("lens").value.trim(),
     iso: $("iso").value,
+    photosCompatible: captureDates.compatible(),
   };
   let settings;
   try {

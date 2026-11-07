@@ -377,6 +377,7 @@ test("batch capture date, blank time, and switching back to preserve original ti
       Array.from({ length: 36 }, (_, i) => photo(`frame-${i}.jpg`)),
     );
   await page.locator("input[name=date-mode][value=batch]").check();
+  await page.locator("#photos-compatible").uncheck();
   await page.locator("#process").click();
   await expect(page.locator("#message")).toContainText("撮影日を入力");
   await page.locator("#capture-date-batch").fill("2024-02-29");
@@ -406,6 +407,7 @@ test("date candidates apply to individual files and remain independent of exposu
   await page.goto("/");
   await expect(page.locator("#offline-status")).toContainText("準備完了");
   await page.locator("input[name=date-mode][value=individual]").check();
+  await page.locator("#photos-compatible").uncheck();
   await page.locator("#date-candidates input").first().fill("2025-03-04");
   await page.locator("#add-date").click();
   await page.locator("#date-candidates input").nth(1).fill("2025-04-01");
@@ -448,4 +450,47 @@ test("date candidates apply to individual files and remain independent of exposu
   await page.locator("#process").click();
   await expect(page.locator("#message")).toContainText("02.jpg：撮影日1を入力");
   await expect(page.locator("#download")).toBeHidden();
+});
+
+test("Photos compatibility defaults on, applies individual dates, and preserves unassigned files", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page
+    .locator("#files")
+    .setInputFiles([photo("01.jpg"), photo("02.jpg"), photo("03.jpg")]);
+  await page.locator("input[name=date-mode][value=individual]").check();
+  await expect(page.locator("#photos-compatible")).toBeChecked();
+  await page.locator("#date-candidates input").first().fill("2025-06-15");
+  await page.locator("#add-date").click();
+  await page.locator("#date-candidates input").nth(1).fill("2025-07-20");
+  await page
+    .getByRole("combobox", { name: "01.jpg の撮影日", exact: true })
+    .selectOption("date-1");
+  await page
+    .getByRole("combobox", { name: "02.jpg の撮影日", exact: true })
+    .selectOption("date-2");
+  await page.locator("#process").click();
+  await expect(page.locator("#result")).toContainText("成功 3 枚");
+  const files = await download(page);
+  expect(files.map((f) => shootingDate(f.data))).toEqual([
+    "2025:06:15 00:00:00",
+    "2025:07:20 00:00:00",
+    "1998:07:12 15:30:00",
+  ]);
+  for (const file of files.slice(0, 2)) {
+    const d = decode(file.data);
+    expect(d.Photo.DateTimeDigitized).toEqual(d.Photo.DateTimeOriginal);
+    expect(d.Image.DateTime).toEqual(d.Photo.DateTimeOriginal);
+    expect(imageData(file.data)).toEqual(imageData(fixture()));
+  }
+  await page.locator("#photos-compatible").uncheck();
+  await expect(page.locator("#download")).toBeHidden();
+  await page.locator("#process").click();
+  await expect(page.locator("#result")).toContainText("成功 3 枚");
+  expect((await download(page)).map((f) => shootingDate(f.data))).toEqual([
+    "2025:06:15   :  :  ",
+    "2025:07:20   :  :  ",
+    "1998:07:12 15:30:00",
+  ]);
 });
